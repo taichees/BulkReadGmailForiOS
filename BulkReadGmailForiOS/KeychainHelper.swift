@@ -5,10 +5,10 @@ import Security
 class KeychainHelper {
     static let shared = KeychainHelper()
     private let service = "com.bulkread.gmail.session"
-    private let account = "auth-token"
+    private let account = "session-data"
 
-    func save(_ token: String) {
-        let data = Data(token.utf8)
+    func saveSession(_ session: UserSession) {
+        guard let data = try? JSONEncoder().encode(session) else { return }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -19,7 +19,7 @@ class KeychainHelper {
         SecItemAdd(query as CFDictionary, nil)
     }
 
-    func read() -> String? {
+    func readSession() -> UserSession? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -29,13 +29,14 @@ class KeychainHelper {
         ]
         var result: AnyObject?
         SecItemCopyMatching(query as CFDictionary, &result)
-        if let data = result as? Data {
-            return String(data: data, encoding: .utf8)
+        if let data = result as? Data,
+           let session = try? JSONDecoder().decode(UserSession.self, from: data) {
+            return session
         }
         return nil
     }
 
-    func delete() {
+    func deleteSession() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

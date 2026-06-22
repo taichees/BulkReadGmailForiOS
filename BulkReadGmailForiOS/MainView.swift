@@ -92,27 +92,28 @@ struct MainView: View {
     /// サーバーサイドAPIの呼び出し処理
     private func performBulkRead() async {
         isLoading = true
-        progressText = "メール取得中..."
+        progressText = "アクセストークン確認中..."
         
-        guard let token = KeychainHelper.shared.read() else {
+        guard let accessToken = await authManager.getValidAccessToken() else {
             isLoading = false
+            triggerToast(message: "セッションが期限切れです。再ログインしてください。")
+            authManager.logout()
             return
         }
+        
+        progressText = "メール取得中..."
         
         let url = URL(string: "https://gmail-batch-read.chiaki-621.workers.dev/v1/gmail/read-all")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let clientID = "725405052696-1ijvqnh0b09t9rj9gd032s0aobhvuvrj.apps.googleusercontent.com"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         
         struct ReadAllRequest: Codable {
-            let user_id: String
-            let client_id: String
             let stream: Bool
         }
         
-        let body = ReadAllRequest(user_id: token, client_id: clientID, stream: true)
+        let body = ReadAllRequest(stream: true)
         
         do {
             request.httpBody = try JSONEncoder().encode(body)
@@ -184,7 +185,7 @@ struct MainView: View {
     
     /// バックエンドのセッション削除とローカルログアウト
     private func performLogout() async {
-        guard let token = KeychainHelper.shared.read() else {
+        guard let session = KeychainHelper.shared.readSession() else {
             authManager.logout()
             return
         }
@@ -198,7 +199,7 @@ struct MainView: View {
             let user_id: String
         }
         
-        let body = LogoutRequest(user_id: token)
+        let body = LogoutRequest(user_id: session.userId)
         
         do {
             request.httpBody = try JSONEncoder().encode(body)

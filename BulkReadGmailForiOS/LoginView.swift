@@ -71,9 +71,9 @@ struct LoginView: View {
                    let code = queryItems.first(where: { $0.name == "code" })?.value {
                     
                     Task {
-                        if let userId = await sendAuthorizationCodeToServer(code: code) {
+                        if let session = await sendAuthorizationCodeToServer(code: code) {
                             await MainActor.run {
-                                authManager.login(token: userId)
+                                authManager.login(session: session)
                             }
                         } else {
                             print("OAuth認証失敗: サーバーでのトークン保存に失敗しました。")
@@ -89,7 +89,7 @@ struct LoginView: View {
     }
     
     /// 認可コードをバックエンドサーバーに送信してトークン保存を行う
-    private func sendAuthorizationCodeToServer(code: String) async -> String? {
+    private func sendAuthorizationCodeToServer(code: String) async -> UserSession? {
         let backendURL = URL(string: "https://gmail-batch-read.chiaki-621.workers.dev/v1/auth/callback")!
         var request = URLRequest(url: backendURL)
         request.httpMethod = "POST"
@@ -105,8 +105,11 @@ struct LoginView: View {
         }
         
         struct AuthCallbackResponse: Codable {
-            let success: Bool?
+            let success: Bool
             let user_id: String?
+            let access_token: String?
+            let refresh_token: String?
+            let expires_in: Int?
             let error: String?
         }
         
@@ -116,8 +119,13 @@ struct LoginView: View {
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 let res = try JSONDecoder().decode(AuthCallbackResponse.self, from: data)
-                if res.success == true {
-                    return res.user_id
+                if res.success, let userId = res.user_id, let accessToken = res.access_token, let expiresIn = res.expires_in {
+                    return UserSession(
+                        userId: userId,
+                        accessToken: accessToken,
+                        refreshToken: res.refresh_token,
+                        expiryDate: Date().timeIntervalSince1970 + Double(expiresIn)
+                    )
                 } else {
                     print("バックエンドがエラーを返しました: \(res.error ?? "不明なエラー")")
                 }
